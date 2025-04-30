@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1746006070789" clover="3.2.0">
+  <project timestamp="1746006070790" name="All files">
+    <metrics statements="14" coveredstatements="14" conditionals="7" coveredconditionals="7" methods="3" coveredmethods="3" elements="24" coveredelements="24" complexity="0" loc="14" ncloc="14" packages="1" files="1" classes="1"/>
+    <file name="model.ts" path="C:\Users\DELL USER\OneDrive\Desktop\UWAProject\Backend\src\data\uid\model.ts">
+      <metrics statements="14" coveredstatements="14" conditionals="7" coveredconditionals="7" methods="3" coveredmethods="3"/>
+      <line num="6" count="2" type="cond" truecount="2" falsecount="0"/>
+      <line num="7" count="2" type="stmt"/>
+      <line num="8" count="2" type="stmt"/>
+      <line num="46" count="2" type="stmt"/>
+      <line num="47" count="7" type="cond" truecount="1" falsecount="0"/>
+      <line num="48" count="1" type="stmt"/>
+      <line num="50" count="6" type="cond" truecount="1" falsecount="0"/>
+      <line num="51" count="1" type="stmt"/>
+      <line num="53" count="5" type="cond" truecount="1" falsecount="0"/>
+      <line num="54" count="1" type="stmt"/>
+      <line num="56" count="4" type="cond" truecount="1" falsecount="0"/>
+      <line num="57" count="1" type="stmt"/>
+      <line num="59" count="3" type="cond" truecount="1" falsecount="0"/>
+      <line num="60" count="1" type="stmt"/>
+    </file>
+  </project>
+</coverage>
