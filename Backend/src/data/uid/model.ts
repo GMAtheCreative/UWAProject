@@ -5,7 +5,7 @@ import { AddressMapping } from '../addressMapping/model';
  */
 export enum Blockchain {
   Ethereum = 'ethereum',
-  Bitcoin = 'bitcoin',
+  Sui = 'sui',
 }
 
 /**
@@ -58,5 +58,8 @@ export function validateUidModel(uid: UidModel): void {
   }
   if (uid.addresses.some((a) => !Object.values(Blockchain).includes(a.chain))) {
     throw new Error('Invalid blockchain in address mappings');
+  }
+  if (uid.addresses.some((a) => !a.address.match(/^0x[a-fA-F0-9]+$/))) {
+    throw new Error('Invalid address format');
   }
 }

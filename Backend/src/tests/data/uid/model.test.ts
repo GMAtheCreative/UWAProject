@@ -1,5 +1,5 @@
-import { UidModel, validateUidModel, Blockchain } from '../../../../src/data/uid/model';
-import { AddressMapping } from '../../../../src/data/addressMapping/model';
+import { UidModel, validateUidModel, Blockchain } from '../../../../src/data/uid';
+import { AddressMapping } from '../../../../src/data/addressMapping';
 
 describe('UidModel', () => {
   let validUid: UidModel;
@@ -11,7 +11,7 @@ describe('UidModel', () => {
       username: 'johndoe',
       addresses: [
         { chain: Blockchain.Ethereum, address: '0x1234567890abcdef1234567890abcdef12345678' },
-        { chain: Blockchain.Bitcoin, address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' },
+        { chain: Blockchain.Sui, address: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890' },
       ],
       createdAt: new Date(),
     };
@@ -45,6 +45,22 @@ describe('UidModel', () => {
       expect(() => validateUidModel(invalidUid)).toThrow('Invalid blockchain in address mappings');
     });
 
+    it('should throw for invalid address format (non-hex)', () => {
+      const invalidUid = {
+        ...validUid,
+        addresses: [{ chain: Blockchain.Ethereum, address: '0xinvalid' }],
+      };
+      expect(() => validateUidModel(invalidUid)).toThrow('Invalid address format');
+    });
+
+    it('should throw for address missing 0x prefix', () => {
+      const invalidUid = {
+        ...validUid,
+        addresses: [{ chain: Blockchain.Ethereum, address: '1234567890abcdef1234567890abcdef12345678' }],
+      };
+      expect(() => validateUidModel(invalidUid)).toThrow('Invalid address format');
+    });
+
     it('should pass for empty addresses array', () => {
       const validEmptyAddresses = { ...validUid, addresses: [] };
       expect(() => validateUidModel(validEmptyAddresses)).not.toThrow();
@@ -59,8 +75,7 @@ describe('UidModel', () => {
   describe('Blockchain Enum', () => {
     it('should contain supported blockchains', () => {
       expect(Blockchain.Ethereum).toBe('ethereum');
-      expect(Blockchain.Bitcoin).toBe('bitcoin');
+      expect(Blockchain.Sui).toBe('sui');
     });
   });
 });
-// ```
