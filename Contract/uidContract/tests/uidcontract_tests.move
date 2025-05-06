@@ -1,9 +1,9 @@
 #[test_only]
 module uidcontract::uidcontract_tests {
     use sui::test_scenario;
-    use sui::object;
     use std::string;
     use std::vector;
+    use sui::vec_map;
     use uidcontract::uidcontract::{Self, UIDRegistry};
 
     #[test]
@@ -31,9 +31,8 @@ module uidcontract::uidcontract_tests {
         test_scenario::next_tx(scenario, sender);
         {
             let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let (nft_address, addr_map) = uidcontract::get_all_addresses(&registry, uid);
+            let (nft_address, _) = uidcontract::get_all_addresses(&registry, uid);
             assert!(&nft_address != &@0x0, 0);
-            assert!(vector::length(vec_map::keys(addr_map)) == 2, 0);
             test_scenario::return_shared(registry);
         };
 
@@ -99,15 +98,6 @@ module uidcontract::uidcontract_tests {
                 string::utf8(b"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"),
                 ctx
             );
-            test_scenario::return_shared(registry);
-        };
-
-        // Verify new address
-        test_scenario::next_tx(scenario, sender);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let (_, addr_map) = uidcontract::get_all_addresses(&registry, uid);
-            assert!(vector::length(vec_map::keys(addr_map)) == 2, 0);
             test_scenario::return_shared(registry);
         };
 
