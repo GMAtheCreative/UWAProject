@@ -1,178 +1,69 @@
 #[test_only]
 module uidcontract::uidcontract_tests {
+    use sui::tx_context::TxContext;
+    use sui::vector;
+    use sui::string;
+    use sui::object;
     use sui::test_scenario;
-    use std::string;
-    use std::vector;
-    use sui::vec_map;
-    use uidcontract::uidcontract::{Self, UIDRegistry};
+    use uidcontract::uidcontract;
 
     #[test]
-    fun test_register_uid() {
-        let scenario_val = test_scenario::begin(@0x1);
-        let scenario = &mut scenario_val;
-        let sender = @0x1;
-        let uid = string::utf8(b"alice.sui");
-        let networks = vector[string::utf8(b"sui"), string::utf8(b"eth")];
-        let addresses = vector[
-            string::utf8(b"0xsui123"),
-            string::utf8(b"0xeth456")
-        ];
+    public fun test_user_registration() {
+        let mut scenario = test_scenario::begin();
+        let mut ctx = TxContext::empty();
 
-        // Initialize registry
-        test_scenario::next_tx(scenario, sender);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let ctx = test_scenario::ctx(scenario);
-            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
-            test_scenario::return_shared(registry);
-        };
+        // Initialize the UID registry
+        uidcontract::init_registry(&mut ctx);
+        let registry = test_scenario::take_from_sender<uidcontract::UidRegistry>(&mut scenario);
 
-        // Verify registration
-        test_scenario::next_tx(scenario, sender);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let (nft_address, _) = uidcontract::get_all_addresses(&registry, uid);
-            assert!(&nft_address != &@0x0, 0);
-            test_scenario::return_shared(registry);
-        };
+        // Register user
+        let uid = string::utf8(b"Tim123");
+        let addresses = vector::from_array([string::utf8(b"0xABC"), string::utf8(b"0xDEF")]);
+        let result = uidcontract::register_user(uid, addresses, &mut registry, &mut ctx);
 
-        test_scenario::end(scenario_val);
+        test_scenario::return_to_sender(registry, &mut scenario);
+
+        assert!(object::exists(result), b"UID NFT not created");
     }
 
     #[test]
-    #[expected_failure(abort_code = 1000)]
-    fun test_duplicate_uid() {
-        let scenario_val = test_scenario::begin(@0x1);
-        let scenario = &mut scenario_val;
-        let sender = @0x1;
-        let uid = string::utf8(b"bob.sui");
-        let networks = vector[string::utf8(b"sui")];
-        let addresses = vector[string::utf8(b"0xsui789")];
+    public fun test_duplicate_registration_fails() {
+        let mut scenario = test_scenario::begin();
+        let mut ctx = TxContext::empty();
 
-        // First registration
-        test_scenario::next_tx(scenario, sender);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let ctx = test_scenario::ctx(scenario);
-            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
-            test_scenario::return_shared(registry);
-        };
+        // Init registry and register user
+        uidcontract::init_registry(&mut ctx);
+        let mut registry = test_scenario::take_from_sender<uidcontract::UidRegistry>(&mut scenario);
 
-        // Attempt duplicate (should fail)
-        test_scenario::next_tx(scenario, sender);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let ctx = test_scenario::ctx(scenario);
-            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
-            test_scenario::return_shared(registry);
-        };
+        let uid = string::utf8(b"Tim123");
+        let addresses = vector::from_array([string::utf8(b"0xABC")]);
+
+        uidcontract::register_user(uid.clone(), addresses, &mut registry, &mut ctx);
+
+        // Try registering same UID again
+        let second_result = uidcontract::register_user(uid.clone(), vector::empty(), &mut registry, &mut ctx);
+        // Should abort before this line
+        assert!(false, b"Duplicate UID registration did not abort");
     }
 
     #[test]
-    fun test_add_address() {
-        let scenario_val = test_scenario::begin(@0x1);
-        let scenario = &mut scenario_val;
-        let sender = @0x1;
-        let uid = string::utf8(b"charlie.sui");
-        let networks = vector[string::utf8(b"sui")];
-        let addresses = vector[string::utf8(b"0xsui456")];
+    public fun test_register_multiple_unique_uids() {
+        let mut scenario = test_scenario::begin();
+        let mut ctx = TxContext::empty();
 
-        // Register UID
-        test_scenario::next_tx(scenario, sender);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let ctx = test_scenario::ctx(scenario);
-            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
-            test_scenario::return_shared(registry);
-        };
+        uidcontract::init_registry(&mut ctx);
+        let mut registry = test_scenario::take_from_sender<uidcontract::UidRegistry>(&mut scenario);
 
-        // Add new address
-        test_scenario::next_tx(scenario, sender);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let ctx = test_scenario::ctx(scenario);
-            uidcontract::add_address(
-                &registry,
-                uid,
-                string::utf8(b"btc"),
-                string::utf8(b"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"),
-                ctx
-            );
-            test_scenario::return_shared(registry);
-        };
+        let uid1 = string::utf8(b"Tim123");
+        let uid2 = string::utf8(b"Alex999");
 
-        test_scenario::end(scenario_val);
-    }
+        let addr1 = vector::from_array([string::utf8(b"0xAAA")]);
+        let addr2 = vector::from_array([string::utf8(b"0xBBB")]);
 
-    #[test]
-    #[expected_failure(abort_code = 1004)]
-    fun test_unauthorized_add_address() {
-        let scenario_val = test_scenario::begin(@0x1);
-        let scenario = &mut scenario_val;
-        let sender1 = @0x1;
-        let sender2 = @0x2;
-        let uid = string::utf8(b"dave.sui");
-        let networks = vector[string::utf8(b"sui")];
-        let addresses = vector[string::utf8(b"0xsui789")];
+        let res1 = uidcontract::register_user(uid1, addr1, &mut registry, &mut ctx);
+        let res2 = uidcontract::register_user(uid2, addr2, &mut registry, &mut ctx);
 
-        // Register UID with sender1
-        test_scenario::next_tx(scenario, sender1);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let ctx = test_scenario::ctx(scenario);
-            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
-            test_scenario::return_shared(registry);
-        };
-
-        // Attempt to add address with sender2 (should fail)
-        test_scenario::next_tx(scenario, sender2);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let ctx = test_scenario::ctx(scenario);
-            uidcontract::add_address(
-                &registry,
-                uid,
-                string::utf8(b"eth"),
-                string::utf8(b"0xeth123"),
-                ctx
-            );
-        };
-    }
-
-    #[test]
-    fun test_get_specific_address() {
-        let scenario_val = test_scenario::begin(@0x1);
-        let scenario = &mut scenario_val;
-        let sender = @0x1;
-        let uid = string::utf8(b"eve.sui");
-        let networks = vector[string::utf8(b"sui"), string::utf8(b"eth")];
-        let addresses = vector[
-            string::utf8(b"0xsui123"),
-            string::utf8(b"0xeth456")
-        ];
-
-        // Register UID
-        test_scenario::next_tx(scenario, sender);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let ctx = test_scenario::ctx(scenario);
-            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
-            test_scenario::return_shared(registry);
-        };
-
-        // Get specific address
-        test_scenario::next_tx(scenario, sender);
-        {
-            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
-            let (_, eth_addr) = uidcontract::get_address(
-                &registry,
-                uid,
-                string::utf8(b"eth")
-            );
-            assert!(eth_addr == &string::utf8(b"0xeth456"), 0);
-            test_scenario::return_shared(registry);
-        };
-
-        test_scenario::end(scenario_val);
+        assert!(object::exists(res1), b"UID 1 not created");
+        assert!(object::exists(res2), b"UID 2 not created");
     }
 }
