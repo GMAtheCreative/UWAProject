@@ -1,10 +1,14 @@
 module uidcontract::uidcontract {
+    use sui::object::{UID};
+    use sui::transfer;
+    use sui::tx_context::{TxContext};
     use sui::event;
     use sui::table;
     use sui::vec_map;
-    use std::string::{Self, String};
+    use std::string::{String};
+    use std::vector;
 
-    // One-time witness struct required for initialization
+    // One-time witness struct
     public struct UIDCONTRACT has drop {}
 
     // Error codes
@@ -12,113 +16,154 @@ module uidcontract::uidcontract {
     const E_INVALID_UID: u64 = 1001;
     const E_INVALID_ADDRESS: u64 = 1003;
     const E_NOT_OWNER: u64 = 1004;
+    const E_UID_NOT_FOUND: u64 = 1005;
 
-    // UID Registry: Stores all UIDs and their associated NFT addresses
+    // UID Registry
     public struct UIDRegistry has key {
         id: UID,
-        taken_uids: table::Table<String, address>,
+        uid_to_nft: table::Table<String, address>, // UID to NFT address mapping
         admin: address,
     }
 
     // Non-transferable UID NFT
-    public struct UserID has key {
+    public struct UIDNFT has key {
         id: UID,
         uid: String,
-        addresses: vec_map::VecMap<String, String>,
+        addresses: vec_map::VecMap<String, String>, // Network -> Address mapping
         owner: address,
     }
 
     // Events
-    public struct UIDMinted has copy, drop {
+    public struct UIDRegistered has copy, drop {
         uid: String,
         nft_id: address,
         owner: address,
     }
 
-    public struct AddressMapped has copy, drop {
+    public struct AddressAdded has copy, drop {
         uid: String,
-        chain: String,
+        network: String,
         address: String,
     }
 
-    // Initialize UID Registry
-    fun init(_contract: UIDCONTRACT, ctx: &mut tx_context::TxContext) {
+    /// Initialize the UID registry
+    fun init(witness: UIDCONTRACT, ctx: &mut TxContext) {
         transfer::share_object(UIDRegistry {
             id: object::new(ctx),
-            taken_uids: table::new(ctx),
+            uid_to_nft: table::new(ctx),
             admin: tx_context::sender(ctx),
         });
     }
 
-    // Mint UID NFT and store address mappings
+    /// Register a new UID with initial addresses
     public entry fun register_uid(
         registry: &mut UIDRegistry,
         uid: String,
-        chains: vector<String>,
+        networks: vector<String>,
         addresses: vector<String>,
-        ctx: &mut tx_context::TxContext
+        ctx: &mut TxContext
     ) {
+        // Validate inputs
         assert!(string::length(&uid) >= 3 && string::length(&uid) <= 255, E_INVALID_UID);
-        assert!(!table::contains(&registry.taken_uids, uid), E_UID_TAKEN);
-        assert!(vector::length(&chains) == vector::length(&addresses), E_INVALID_ADDRESS);
+        assert!(!table::contains(&registry.uid_to_nft, uid), E_UID_TAKEN);
+        assert!(vector::length(&networks) == vector::length(&addresses), E_INVALID_ADDRESS);
 
-        let mut user_addresses = vec_map::empty();
         let sender = tx_context::sender(ctx);
-        let mut i = 0;
-        while (i < vector::length(&chains)) {
-            let chain = *vector::borrow(&chains, i);
-            let address = *vector::borrow(&addresses, i);
-            vec_map::insert(&mut user_addresses, chain, address);
-            event::emit(AddressMapped { uid, chain, address });
-            i = i + 1;
-        }
+        let mut address_map = vec_map::empty();
 
-        let user_id = UserID {
+        // Add all initial addresses
+        let i = 0;
+        let len = vector::length(&networks);
+        while (i < len) {
+            let network = vector::borrow(&networks, i);
+            let address = vector::borrow(&addresses, i);
+            vec_map::insert(&mut address_map, *network, *address);
+            event::emit(AddressAdded {
+                uid: copy uid,
+                network: *network,
+                address: *address
+            });
+            i = i + 1;
+        };
+
+        // Create the UID NFT
+        let uid_nft = UIDNFT {
             id: object::new(ctx),
             uid,
-            addresses: user_addresses,
+            addresses: address_map,
             owner: sender,
         };
 
-        let nft_id = object::id_address(&user_id);
-        table::add(&mut registry.taken_uids, uid, nft_id);
-        transfer::freeze_object(user_id);
+        // Store the mapping
+        let nft_address = object::id_to_address(&uid_nft.id);
+        table::add(&mut registry.uid_to_nft, uid, nft_address);
 
-        event::emit(UIDMinted { uid, nft_id, owner: sender });
+        // Transfer NFT to sender (non-transferable by design)
+        transfer::transfer(uid_nft, sender);
+
+        event::emit(UIDRegistered {
+            uid,
+            nft_id: nft_address,
+            owner: sender
+        });
     }
 
-    // Fetch UID NFT from the blockchain
-    public fun get_uid_nft(registry: &UIDRegistry, uid: String): address {
-        if (table::contains(&registry.taken_uids, uid)) {
-            *table::borrow(&registry.taken_uids, uid)
-        } else {
-            @0x0
-        }
+    /// Get all addresses for a UID
+    public fun get_all_addresses(
+        registry: &UIDRegistry,
+        uid: String
+    ): (address, &vec_map::VecMap<String, String>) {
+        assert!(table::contains(&registry.uid_to_nft, uid), E_UID_NOT_FOUND);
+        let nft_address = table::borrow(&registry.uid_to_nft, uid);
+        let uid_nft = borrow_uid_nft(nft_address);
+        (*nft_address, &uid_nft.addresses)
     }
 
-    // Fetch all addresses tied to a UID
-    public fun get_addresses(user_id: &UserID): vec_map::VecMap<String, String> {
-        user_id.addresses
+    /// Get specific address for a UID and network
+    public fun get_address(
+        registry: &UIDRegistry,
+        uid: String,
+        network: String
+    ): (address, &String) {
+        assert!(table::contains(&registry.uid_to_nft, uid), E_UID_NOT_FOUND);
+        let nft_address = table::borrow(&registry.uid_to_nft, uid);
+        let uid_nft = borrow_uid_nft(nft_address);
+        assert!(vec_map::contains(&uid_nft.addresses, &network), E_INVALID_ADDRESS);
+        (*nft_address, vec_map::get(&uid_nft.addresses, &network))
     }
 
-    // Resolve blockchain address for a UID
-    public fun resolve_address(user_id: &UserID, chain: String): String {
-        if (vec_map::contains(&user_id.addresses, &chain)) {
-            *vec_map::get(&user_id.addresses, &chain)
-        } else {
-            string::utf8(b"")
-        }
-    }
-
-    // Update address mapping
-    public entry fun update_address(
-        user_id: &mut UserID,
-        chain: String,
+    /// Add new address to existing UID
+    public entry fun add_address(
+        registry: &UIDRegistry,
+        uid: String,
+        network: String,
         address: String,
-        ctx: &mut tx_context::TxContext
+        ctx: &mut TxContext
     ) {
-        assert!(tx_context::sender(ctx) == user_id.owner, E_NOT_OWNER);
-        vec_map::insert(&mut user_id.addresses, chain, address);
-        event::emit(AddressMapped { uid: user_id.uid, chain, address });
+        assert!(table::contains(&registry.uid_to_nft, uid), E_UID_NOT_FOUND);
+        let nft_address = table::borrow(&registry.uid_to_nft, uid);
+        let uid_nft = borrow_uid_nft_mut(nft_address);
+        
+        let sender = tx_context::sender(ctx);
+        assert!(uid_nft.owner == sender, E_NOT_OWNER);
+
+        vec_map::insert(&mut uid_nft.addresses, network, address);
+        event::emit(AddressAdded {
+            uid,
+            network,
+            address
+        });
+    }
+
+    /// Helper to get UIDNFT reference
+    fun borrow_uid_nft(nft_address: &address): &UIDNFT {
+        let object = object::borrow<UIDNFT>(*nft_address);
+        object
+    }
+
+    /// Helper to get mutable UIDNFT reference
+    fun borrow_uid_nft_mut(nft_address: &address): &mut UIDNFT {
+        let object = object::borrow_mut<UIDNFT>(*nft_address);
+        object
     }
 }

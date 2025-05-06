@@ -1,68 +1,188 @@
 #[test_only]
-#[allow(unused_use, unused_const)]
-module uidcontract::uidcontract_test {
+module uidcontract::uidcontract_tests {
     use sui::test_scenario;
-    use std::string::{Self, String};
-    use uidcontract::uidcontract::{Self, UIDRegistry, UserID, register_uid, resolve_address, update_address, get_uid_nft, get_addresses};
+    use sui::object;
+    use std::string;
+    use std::vector;
+    use uidcontract::uidcontract::{Self, UIDRegistry};
 
-    // Error codes
-    const E_UID_TAKEN: u64 = 1000;
-    const E_NOT_OWNER: u64 = 1004;
+    #[test]
+    fun test_register_uid() {
+        let scenario_val = test_scenario::begin(@0x1);
+        let scenario = &mut scenario_val;
+        let sender = @0x1;
+        let uid = string::utf8(b"alice.sui");
+        let networks = vector[string::utf8(b"sui"), string::utf8(b"eth")];
+        let addresses = vector[
+            string::utf8(b"0xsui123"),
+            string::utf8(b"0xeth456")
+        ];
 
-    // Helper to setup scenario
-    fun setup_scenario(): test_scenario::Scenario {
-        test_scenario::begin(@0x1)
+        // Initialize registry
+        test_scenario::next_tx(scenario, sender);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let ctx = test_scenario::ctx(scenario);
+            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
+            test_scenario::return_shared(registry);
+        };
+
+        // Verify registration
+        test_scenario::next_tx(scenario, sender);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let (nft_address, addr_map) = uidcontract::get_all_addresses(&registry, uid);
+            assert!(&nft_address != &@0x0, 0);
+            assert!(vector::length(vec_map::keys(addr_map)) == 2, 0);
+            test_scenario::return_shared(registry);
+        };
+
+        test_scenario::end(scenario_val);
     }
 
-    // Test Unique UID Validation
     #[test]
-    fun test_duplicate_uid_minting() {
-        let mut scenario = setup_scenario();
+    #[expected_failure(abort_code = 1000)]
+    fun test_duplicate_uid() {
+        let scenario_val = test_scenario::begin(@0x1);
+        let scenario = &mut scenario_val;
         let sender = @0x1;
+        let uid = string::utf8(b"bob.sui");
+        let networks = vector[string::utf8(b"sui")];
+        let addresses = vector[string::utf8(b"0xsui789")];
 
-        test_scenario::next_tx(&mut scenario, sender);
-        let uid = string::utf8(b"johndoe.mask");
-        let chains = vector[string::utf8(b"ethereum")];
-        let addresses = vector[string::utf8(b"0x1234567890abcdef")];
+        // First registration
+        test_scenario::next_tx(scenario, sender);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let ctx = test_scenario::ctx(scenario);
+            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
+            test_scenario::return_shared(registry);
+        };
 
-        let mut registry = test_scenario::take_shared<UIDRegistry>(&scenario);
-        let ctx = test_scenario::ctx(&mut scenario);
-        register_uid(&mut registry, uid, chains, addresses, ctx);
-        test_scenario::return_shared(registry);
-
-        test_scenario::next_tx(&mut scenario, sender);
-        let mut registry = test_scenario::take_shared<UIDRegistry>(&scenario);
-        let ctx = test_scenario::ctx(&mut scenario);
-        register_uid(&mut registry, uid, chains, addresses, ctx);
-        assert!(get_uid_nft(&registry, uid) != @0x0, E_UID_TAKEN);
-        test_scenario::return_shared(registry);
-
-        test_scenario::end(scenario);
+        // Attempt duplicate (should fail)
+        test_scenario::next_tx(scenario, sender);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let ctx = test_scenario::ctx(scenario);
+            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
+            test_scenario::return_shared(registry);
+        };
     }
 
-    // Test Updating Addresses
     #[test]
-    fun test_update_uid_address() {
-        let mut scenario = setup_scenario();
+    fun test_add_address() {
+        let scenario_val = test_scenario::begin(@0x1);
+        let scenario = &mut scenario_val;
         let sender = @0x1;
+        let uid = string::utf8(b"charlie.sui");
+        let networks = vector[string::utf8(b"sui")];
+        let addresses = vector[string::utf8(b"0xsui456")];
 
-        test_scenario::next_tx(&mut scenario, sender);
-        let uid = string::utf8(b"johndoe.mask");
-        let chains = vector[string::utf8(b"ethereum")];
-        let addresses = vector[string::utf8(b"0x1234567890abcdef")];
+        // Register UID
+        test_scenario::next_tx(scenario, sender);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let ctx = test_scenario::ctx(scenario);
+            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
+            test_scenario::return_shared(registry);
+        };
 
-        let mut registry = test_scenario::take_shared<UIDRegistry>(&scenario);
-        let ctx = test_scenario::ctx(&mut scenario);
-        register_uid(&mut registry, uid, chains, addresses, ctx);
-        test_scenario::return_shared(registry);
+        // Add new address
+        test_scenario::next_tx(scenario, sender);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let ctx = test_scenario::ctx(scenario);
+            uidcontract::add_address(
+                &registry,
+                uid,
+                string::utf8(b"btc"),
+                string::utf8(b"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"),
+                ctx
+            );
+            test_scenario::return_shared(registry);
+        };
 
-        test_scenario::next_tx(&mut scenario, sender);
-        let mut user_id = test_scenario::take_from_address<UserID>(&scenario, sender);
-        let ctx = test_scenario::ctx(&mut scenario);
-        update_address(&mut user_id, string::utf8(b"bitcoin"), string::utf8(b"bc1xyz0987abcdef"), ctx);
-        assert!(resolve_address(&user_id, string::utf8(b"bitcoin")) == string::utf8(b"bc1xyz0987abcdef"), E_NOT_OWNER);
-        test_scenario::return_to_address(sender, user_id);
+        // Verify new address
+        test_scenario::next_tx(scenario, sender);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let (_, addr_map) = uidcontract::get_all_addresses(&registry, uid);
+            assert!(vector::length(vec_map::keys(addr_map)) == 2, 0);
+            test_scenario::return_shared(registry);
+        };
 
-        test_scenario::end(scenario);
+        test_scenario::end(scenario_val);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 1004)]
+    fun test_unauthorized_add_address() {
+        let scenario_val = test_scenario::begin(@0x1);
+        let scenario = &mut scenario_val;
+        let sender1 = @0x1;
+        let sender2 = @0x2;
+        let uid = string::utf8(b"dave.sui");
+        let networks = vector[string::utf8(b"sui")];
+        let addresses = vector[string::utf8(b"0xsui789")];
+
+        // Register UID with sender1
+        test_scenario::next_tx(scenario, sender1);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let ctx = test_scenario::ctx(scenario);
+            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
+            test_scenario::return_shared(registry);
+        };
+
+        // Attempt to add address with sender2 (should fail)
+        test_scenario::next_tx(scenario, sender2);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let ctx = test_scenario::ctx(scenario);
+            uidcontract::add_address(
+                &registry,
+                uid,
+                string::utf8(b"eth"),
+                string::utf8(b"0xeth123"),
+                ctx
+            );
+        };
+    }
+
+    #[test]
+    fun test_get_specific_address() {
+        let scenario_val = test_scenario::begin(@0x1);
+        let scenario = &mut scenario_val;
+        let sender = @0x1;
+        let uid = string::utf8(b"eve.sui");
+        let networks = vector[string::utf8(b"sui"), string::utf8(b"eth")];
+        let addresses = vector[
+            string::utf8(b"0xsui123"),
+            string::utf8(b"0xeth456")
+        ];
+
+        // Register UID
+        test_scenario::next_tx(scenario, sender);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let ctx = test_scenario::ctx(scenario);
+            uidcontract::register_uid(&mut registry, uid, networks, addresses, ctx);
+            test_scenario::return_shared(registry);
+        };
+
+        // Get specific address
+        test_scenario::next_tx(scenario, sender);
+        {
+            let registry = test_scenario::take_shared<UIDRegistry>(scenario);
+            let (_, eth_addr) = uidcontract::get_address(
+                &registry,
+                uid,
+                string::utf8(b"eth")
+            );
+            assert!(eth_addr == &string::utf8(b"0xeth456"), 0);
+            test_scenario::return_shared(registry);
+        };
+
+        test_scenario::end(scenario_val);
     }
 }
