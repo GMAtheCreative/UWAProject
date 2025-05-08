@@ -1,5 +1,5 @@
 // #[test_only]
-// module uwacontract::uidregistry_tests {
+module uwacontract::uidregistry_tests {
 //     use sui::tx_context::TxContext;
 //     use uwacontract::uwacontract;
 //     use sui::storage::Table;

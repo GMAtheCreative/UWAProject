@@ -25,13 +25,14 @@ module uwacontract::uwacontract {
         addresses: Table<String, String>
     }
 
-    public entry fun create_directory(ctx: &mut TxContext):UidDirectory{
+    public entry fun create_directory(ctx: &mut TxContext){
         let id = object::new(ctx);
         let map = table::new<String, address>(ctx);
-        UidDirectory {
+        let directory =UidDirectory {
             id,
             user_uids: map
-        }
+        };
+        transfer::transfer(directory, tx_context::sender(ctx));
     }
     public entry fun create_registry(
         directory: &mut UidDirectory, 
@@ -39,8 +40,8 @@ module uwacontract::uwacontract {
         ctx: &mut TxContext) {
       
         if (table::contains(&directory.user_uids, userUid)) {
-            abort EUID_ALREADY_EXISTS;
-        }
+            abort EUID_ALREADY_EXISTS
+        };
         let registry_id = object::new(ctx);  
         let address_map = table::new<String, String>(ctx); 
 
@@ -49,17 +50,20 @@ module uwacontract::uwacontract {
             userUid,
             addresses: address_map,
         };
-        table::add(&mut registry.addresses, network, address);
+        table::add(&mut directory.user_uids, userUid,tx_context::sender(ctx));
 
         transfer::transfer(registry, tx_context::sender(ctx));
     }
+
     public entry fun set_addresses(registry : &mut UidRegistry, network: String, address: String){
       table::add(&mut registry.addresses, network, address);
     }
+
     public fun get_userUid(registry : &UidRegistry) : String {
         return registry.userUid
     }
-     public fun get_address(registry: &UidRegistry, network: String): Option<String> {
+    
+    public fun get_address(registry: &UidRegistry, network: String): Option<String> {
         if (table::contains(&registry.addresses, network)) {
             option::some(*table::borrow(&registry.addresses, network))
         } 
@@ -67,6 +71,7 @@ module uwacontract::uwacontract {
             option::none()
         }
     }
+
     public fun get_uid(registry: &UidRegistry): &UID {
        return &registry.id
     }
