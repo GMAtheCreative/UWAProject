@@ -11,27 +11,45 @@ module uwacontract::uwacontract {
     use std::string::String;
     use std::option::Option;
 
+  
+    const EUID_ALREADY_EXISTS: u64 = 1;
 
+    public struct UidDirectory has key, store {
+        id: UID,
+        user_uids: Table<String, address>
+    }
 
     public struct UidRegistry has key, store {
         id: UID,
         userUid: String,
         addresses: Table<String, String>
     }
-    public entry fun create_registry(userUid: String, ctx: &mut TxContext) {
-        let registry_id = object::new(ctx);  
-        let address_map = table::new<String, String>(ctx);   
-    
-        let existing_registry = table::borrow(&ctx.sender(), userUid)
-        if (table::contains(&global_registry, userUid)){
-            abort("User UID already exists");
+
+    public entry fun create_directory(ctx: &mut TxContext):UidDirectory{
+        let id = object::new(ctx);
+        let map = table::new<String, address>(ctx);
+        UidDirectory {
+            id,
+            user_uids: map
         }
+    }
+    public entry fun create_registry(
+        directory: &mut UidDirectory, 
+        userUid: String, 
+        ctx: &mut TxContext) {
+      
+        if (table::contains(&directory.user_uids, userUid)) {
+            abort EUID_ALREADY_EXISTS;
+        }
+        let registry_id = object::new(ctx);  
+        let address_map = table::new<String, String>(ctx); 
 
         let registry = UidRegistry {
             id: registry_id,
             userUid,
             addresses: address_map,
         };
+        table::add(&mut registry.addresses, network, address);
 
         transfer::transfer(registry, tx_context::sender(ctx));
     }
