@@ -1,53 +1,89 @@
 // #[test_only]
 // module uwacontract::uidregistry_tests {
-//     use sui::tx_context::TxContext;
-//     use uwacontract::uwacontract;
-//     use sui::storage::Table;
+//     use sui::tx_context;
+//     use std::string::{Self, String};
+//     use std::option;
+//     use sui::table;
+//     use uwacontract::uwacontract::{
+//         create_registry, set_addresses,
+//         get_userUid, get_address, get_uid,
+//         EUID_ALREADY_EXISTS
+//     };
+//     use uwacontract::uid_helpers::{new_directory, new_registry};
 
 //     #[test]
-//     public fun test_create_registry() {
-//         let ctx = TxContext::empty();
-//         let user_uid = "Tim123";
-
-//         let registry_id = uwacontract::create_registry(user_uid, &mut ctx);
-//         assert!(object::exists(registry_id), "Registry should be created");
+//     public fun test_create_directory() {
+//         let mut ctx = tx_context::new();
+//         let directory = new_directory(&mut ctx);
+//         assert!(table::length(&directory.user_uids) == 0, b"Directory should be empty on creation");
 //     }
 
 //     #[test]
-//     public fun test_get_userId() {
-//         let ctx = TxContext::empty();
-//         let user_uid = "Tim123";
+//     public fun test_create_registry_success() {
+//         let mut ctx = tx_context::new();
+//         let mut directory = new_directory(&mut ctx);
+//         let user_uid = string::utf8(b"user123");
 
-//         let registry_id = uwacontract::create_registry(user_uid, &mut ctx);
-//         let registry = object::borrow<uwacontract::UidRegistry>(registry_id);
-
-//         let retrieved_uid = uwacontract::get_userId(&registry);
-//         assert!(retrieved_uid == user_uid, "User UID should match");
+//         create_registry(&mut directory, user_uid.clone(), &mut ctx);
+//         assert!(table::contains(&directory.user_uids, user_uid), b"UID should be added to directory");
 //     }
 
 //     #[test]
-//     public fun test_add_address() {
-//         let ctx = TxContext::empty();
-//         let user_uid = "Tim123";
+//     public fun test_duplicate_registry_creation_fails() {
+//         let mut ctx = tx_context::new();
+//         let mut directory = new_directory(&mut ctx);
+//         let user_uid = string::utf8(b"user123");
 
-//         let registry_id = uwacontract::create_registry(user_uid, &mut ctx);
-//         let registry = object::borrow_mut<uwacontract::UidRegistry>(registry_id);
+//         create_registry(&mut directory, user_uid.clone(), &mut ctx);
+//         assert_abort!(create_registry(&mut directory, user_uid.clone(), &mut ctx), EUID_ALREADY_EXISTS);
+//     }
 
-//         uwacontract::set_addresses(&mut registry, "Sui", "0xABC");
+//     #[test]
+//     public fun test_set_addresses() {
+//         let mut ctx = tx_context::new();
+//         let mut registry = new_registry(string::utf8(b"user123"), &mut ctx);
 
-//         let stored_address = uwacontract::get_address(&registry, "Sui");
-//         assert!(stored_address == "0xABC", "Address should be stored correctly");
+//         let network = string::utf8(b"Ethereum");
+//         let address = string::utf8(b"0x123456");
+
+//         set_addresses(&mut registry, network.clone(), address.clone());
+
+//         let stored = get_address(&registry, network).expect();
+//         assert_eq!(stored, address, b"Stored address did not match");
+//     }
+
+//     #[test]
+//     public fun test_get_userUid() {
+//         let mut ctx = tx_context::new();
+//         let uid = string::utf8(b"user999");
+//         let registry = new_registry(uid.clone(), &mut ctx);
+
+//         let got = get_userUid(&registry);
+//         assert_eq!(got, uid, b"Returned UID did not match");
+//     }
+
+//     #[test]
+//     public fun test_get_address_found_and_not_found() {
+//         let mut ctx = tx_context::new();
+//         let mut registry = new_registry(string::utf8(b"user456"), &mut ctx);
+
+//         let network = string::utf8(b"Solana");
+//         let address = string::utf8(b"0xSOL123");
+//         set_addresses(&mut registry, network.clone(), address.clone());
+
+//         let found = get_address(&registry, network.clone()).expect();
+//         assert_eq!(found, address, b"Address should be found");
+
+//         let missing = get_address(&registry, string::utf8(b"Polygon"));
+//         assert!(option::is_none(&missing), b"Expected None for missing network");
 //     }
 
 //     #[test]
 //     public fun test_get_uid() {
-//         let ctx = TxContext::empty();
-//         let user_uid = "Tim123";
+//         let mut ctx = tx_context::new();
+//         let registry = new_registry(string::utf8(b"user789"), &mut ctx);
+//         let uid = get_uid(&registry);
 
-//         let registry_id = uwacontract::create_registry(user_uid, &mut ctx);
-//         let registry = object::borrow<uwacontract::UidRegistry>(registry_id);
-
-//         let retrieved_uid = uwacontract::get_uid(&registry);
-//         assert!(retrieved_uid == registry.id, "Blockchain UID should match");
+//         assert!(!uid.id.id.bytes == object::new(&ctx).id.bytes, b"UID reference check failed");
 //     }
 // }
